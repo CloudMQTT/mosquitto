@@ -645,6 +645,7 @@ static void log_wrap(int level, const char *line)
 
 struct libwebsocket_context *mosq_websockets_init(struct _mqtt3_listener *listener, int log_level)
 {
+	struct libwebsockets_context *context;
 	struct lws_context_creation_info info;
 	struct libwebsocket_protocols *p;
 	int protocol_count;
@@ -668,7 +669,7 @@ struct libwebsocket_context *mosq_websockets_init(struct _mqtt3_listener *listen
 
 	memset(&info, 0, sizeof(info));
 	info.iface = listener->host;
-	info.port = listener->port;
+	info.port = CONTEXT_PORT_NO_LISTEN_SERVER;
 	info.protocols = p;
 	info.gid = -1;
 	info.uid = -1;
@@ -716,7 +717,7 @@ struct libwebsocket_context *mosq_websockets_init(struct _mqtt3_listener *listen
 
 	lws_set_log_level(log_level, log_wrap);
 
-	_mosquitto_log_printf(NULL, MOSQ_LOG_INFO, "Opening websockets listen socket on port %d.", listener->port);
+	_mosquitto_log_printf(NULL, MOSQ_LOG_INFO, "Initializing websocket context...");
 	return libwebsocket_create_context(&info);
 }
 

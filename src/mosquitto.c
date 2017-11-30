@@ -46,6 +46,9 @@ Contributors:
 #ifdef WITH_WEBSOCKETS
 #  include <libwebsockets.h>
 #endif
+#ifdef WITH_SYSTEMD
+#  include <systemd/sd-daemon.h>
+#endif
 
 #include <mosquitto_broker.h>
 #include <memory_mosq.h>
@@ -224,6 +227,12 @@ int main(int argc, char *argv[])
 	FILE *pid;
 	int listener_max;
 	int rc;
+#ifdef WITH_SYSTEMD
+	int sd_fds_count;
+	uint16_t sd_port;
+	struct sockaddr_in peeraddr;
+	socklen_t peeraddrlen = sizeof(peeraddr);
+#endif
 #ifdef WIN32
 	SYSTEMTIME st;
 #else
@@ -315,46 +324,67 @@ int main(int argc, char *argv[])
 
 	listener_max = -1;
 	listensock_index = 0;
+#ifdef WITH_SYSTEMD
+	sd_fds_count = sd_listen_fds(0);
+	if (sd_fds_count == 0) {
+		_mosquitto_log_printf(NULL, MOSQ_LOG_DEBUG, "No file descriptors passed from systemd.");
+	} else {
+		_mosquitto_log_printf(NULL, MOSQ_LOG_INFO, "%d file descriptors passed from systemd.", sd_fds_count);
+	}
+	for (i=0; i<sd_fds_count; i++) {
+		getsockname(SD_LISTEN_FDS_START + i, (struct sockaddr *)&peeraddr, &peeraddrlen);
+		sd_port = ntohs(peeraddr.sin_port);
+		_mosquitto_log_printf(NULL, MOSQ_LOG_INFO, "Systemd fd %d listening on port %d", i, sd_port);
+		for (j=0; j<config.listener_count; j++) {
+			if (config.listeners[j].port == sd_port) {
+				_mosquitto_log_printf(NULL, MOSQ_LOG_DEBUG, "Found listener %s:%d in conf. Using passed systemd fd.", config.listeners[j].host, config.listeners[j].port);
+				config.listeners[j].sock_count = 1;
+				config.listeners[j].socks = _mosquitto_realloc(config.listeners[j].socks, sizeof(mosq_sock_t));
+				config.listeners[j].socks[0] = SD_LISTEN_FDS_START + i;
+				break;
+			}
+		}
+	}
+#endif
 	for(i=0; i<config.listener_count; i++){
-		if(config.listeners[i].protocol == mp_mqtt){
-			if(mqtt3_socket_listen(&config.listeners[i])){
-				mqtt3_db_close(&int_db);
-				if(config.pid_file){
-					remove(config.pid_file);
-				}
-				return 1;
-			}
-			listensock_count += config.listeners[i].sock_count;
-			listensock = _mosquitto_realloc(listensock, sizeof(mosq_sock_t)*listensock_count);
-			if(!listensock){
-				mqtt3_db_close(&int_db);
-				if(config.pid_file){
-					remove(config.pid_file);
-				}
-				return 1;
-			}
-			for(j=0; j<config.listeners[i].sock_count; j++){
-				if(config.listeners[i].socks[j] == INVALID_SOCKET){
-					mqtt3_db_close(&int_db);
-					if(config.pid_file){
-						remove(config.pid_file);
-					}
-					return 1;
-				}
-				listensock[listensock_index] = config.listeners[i].socks[j];
-				if(listensock[listensock_index] > listener_max){
-					listener_max = listensock[listensock_index];
-				}
-				listensock_index++;
-			}
-		}else if(config.listeners[i].protocol == mp_websockets){
 #ifdef WITH_WEBSOCKETS
+		if (config.listeners[i].protocol == mp_websockets) {
 			config.listeners[i].ws_context = mosq_websockets_init(&config.listeners[i], config.websockets_log_level);
 			if(!config.listeners[i].ws_context){
-				_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Unable to create websockets listener on port %d.", config.listeners[i].port);
+				_mosquitto_log_printf(NULL, MOSQ_LOG_ERR, "Error: Unable to create websockets context for port %d.", config.listeners[i].port);
 				return 1;
 			}
+		}
 #endif
+		if(mqtt3_socket_listen(&config.listeners[i])){
+			mqtt3_db_close(&int_db);
+			if(config.pid_file){
+				remove(config.pid_file);
+			}
+			return 1;
+		}
+		listensock_count += config.listeners[i].sock_count;
+		listensock = _mosquitto_realloc(listensock, sizeof(mosq_sock_t)*listensock_count);
+		if(!listensock){
+			mqtt3_db_close(&int_db);
+			if(config.pid_file){
+				remove(config.pid_file);
+			}
+			return 1;
+		}
+		for(j=0; j<config.listeners[i].sock_count; j++){
+			if(config.listeners[i].socks[j] == INVALID_SOCKET){
+				mqtt3_db_close(&int_db);
+				if(config.pid_file){
+					remove(config.pid_file);
+				}
+				return 1;
+			}
+			listensock[listensock_index] = config.listeners[i].socks[j];
+			if(listensock[listensock_index] > listener_max){
+				listener_max = listensock[listensock_index];
+			}
+			listensock_index++;
 		}
 	}
 

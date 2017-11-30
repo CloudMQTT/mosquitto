@@ -58,7 +58,7 @@ WITH_MEMORY_TRACKING:=yes
 WITH_SYS_TREE:=yes
 
 # Build with SRV lookup support.
-WITH_SRV:=yes
+WITH_SRV:=no
 
 # Build using libuuid for clientid generation (Linux only - please report if
 # supported on your platform).
@@ -78,6 +78,9 @@ WITH_SOCKS:=yes
 
 # Build with async dns lookup support for bridges (temporary). Requires glibc.
 #WITH_ADNS:=yes
+
+# Build with systemd support to use socket activation
+WITH_SYSTEMD:=yes
 
 # =============================================================================
 # End of user configuration
@@ -227,6 +230,11 @@ endif
 ifeq ($(WITH_WEBSOCKETS),yes)
 	BROKER_CFLAGS:=$(BROKER_CFLAGS) -DWITH_WEBSOCKETS
 	BROKER_LIBS:=$(BROKER_LIBS) -lwebsockets
+endif
+
+ifeq ($(WITH_SYSTEMD),yes)
+	BROKER_CFLAGS:=$(BROKER_CFLAGS) -DWITH_SYSTEMD
+	BROKER_LIBS:=$(BROKER_LIBS) -lsystemd
 endif
 
 ifeq ($(UNAME),SunOS)

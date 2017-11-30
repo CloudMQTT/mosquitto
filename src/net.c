@@ -124,6 +124,22 @@ int mqtt3_socket_accept(struct mosquitto_db *db, mosq_sock_t listensock)
 		return -1;
 	}
 #endif
+
+#ifdef WITH_WEBSOCKETS
+	for(i=0; i<db->config->listener_count; i++){
+		for(j=0; j<db->config->listeners[i].sock_count; j++){
+			if(db->config->listeners[i].socks[j] == listensock){
+				if (db->config->listeners[i].protocol == mp_websockets
+						&& db->config->listeners[i].ws_context) {
+					_mosquitto_log_printf(NULL, MOSQ_LOG_NOTICE, "New websocket client on port %d", db->config->listeners[i].port);
+					libwebsocket_adopt_socket(db->config->listeners[i].ws_context, new_sock);
+					return new_sock;
+				}
+			}
+		}
+	}
+#endif
+
 	new_context = mqtt3_context_init(db, new_sock);
 	if(!new_context){
 		COMPAT_CLOSE(new_sock);
@@ -131,6 +147,9 @@ int mqtt3_socket_accept(struct mosquitto_db *db, mosq_sock_t listensock)
 	}
 	for(i=0; i<db->config->listener_count; i++){
 		for(j=0; j<db->config->listeners[i].sock_count; j++){
+			if (db->config->listeners[i].protocol == mp_websockets) {
+				continue;
+			}
 			if(db->config->listeners[i].socks[j] == listensock){
 				new_context->listener = &db->config->listeners[i];
 				new_context->listener->client_count++;
@@ -359,6 +378,10 @@ int mqtt3_socket_listen(struct _mqtt3_listener *listener)
 
 	if(!listener) return MOSQ_ERR_INVAL;
 
+#ifdef WITH_SYSTEMD
+	if (listener->sock_count == 0 || listener->socks == NULL) {
+#endif
+
 	snprintf(service, 10, "%d", listener->port);
 	memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = PF_UNSPEC;
@@ -415,6 +438,14 @@ int mqtt3_socket_listen(struct _mqtt3_listener *listener)
 			return 1;
 		}
 	}
+#ifdef WITH_SYSTEMD
+	} else {
+		if(_mosquitto_socket_nonblock(listener->socks[0])){
+			return 1;
+		}
+	}
+#endif
+
 	freeaddrinfo(ainfo);
 
 	/* We need to have at least one working socket. */

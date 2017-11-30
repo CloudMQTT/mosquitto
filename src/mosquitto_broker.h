@@ -33,10 +33,14 @@ Contributors:
 #    define libwebsockets_return_http_status(A, B, C, D) lws_return_http_status((B), (C), (D))
 #    define libwebsockets_get_protocol(A) lws_get_protocol((A))
 
+#    define libwebsocket_adopt_socket lws_adopt_socket
 #    define libwebsocket_context lws_context
 #    define libwebsocket_protocols lws_protocols
 #    define libwebsocket_callback_reasons lws_callback_reasons
 #    define libwebsocket lws
+#  endif
+#  ifndef CONTEXT_PORT_NO_LISTEN_SERVER
+#   define CONTEXT_PORT_NO_LISTEN_SERVER CONTEXT_PORT_NO_LISTEN
 #  endif
 #endif
 
